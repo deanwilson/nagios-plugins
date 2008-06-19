@@ -1,0 +1,142 @@
+#!/bin/bash
+# Author: Dean Wilson ; License: GPL
+# Project Home: http://www.unixdaemon.net/
+# Version: 0.3
+# Fixed a bug when only a single package needs upgrading.
+# Now allows a single package to create a crit - from Bartlomiej Konarski
+
+binaries=$(cat<<all_required_binaries
+  basename
+  apt-get
+  sudo
+all_required_binaries)
+
+# app settings
+APPNAME=$(basename $0)
+VERBOSE=0         # be quiet by default
+
+# sanity check. - check all binaries are present and usable
+for required_binary in $binaries; do
+  which $required_binary > /dev/null
+  if [ "$?" != '0' ];then
+    printf "$APPNAME: No usable '$required_binary' in '$PATH'\n"
+    exit 3
+  fi
+done
+
+#################################################################
+# the scripts usage information
+#################################
+
+usage () {
+
+cat<<EOU
+$APPNAME - Copyright (c) 2006 Dean Wilson Licensed under the GPL
+
+This program checks for Debian packages needing updates and informs
+Nagios of the results.
+
+Usage: $APPNAME
+
+Required Options:
+ -w
+    Exit with WARNING status if INTEGER or more packages need to be updated
+ -c
+    Exit with CRITICAL status if INTEGER or more packages need to be updated
+
+Optional Options:
+ -v
+   Displays all packages that need updating. This may cost a lot of screen estate
+   in the Nagios frontend.
+ -h
+    This help and usage information.
+
+Notes:
+ The warning level must be lower than critical level.
+
+Examples:
+ $APPNAME -w 1 -c 10
+   Checks the packages and warns on 1-9 needing upgrades, criticals on 10 or more.
+ $APPNAME -w 1 -c 10 -v
+   Same as above but the output contains the package names
+
+
+EOU
+exit 3
+}
+
+#################################################################
+# process script arguments  - : means left option takes an argument.
+#################################
+
+while getopts "w:c:vh" option
+do
+  case $option in
+    w ) WARN_THRESH=$OPTARG ;;
+    c ) CRIT_THRESH=$OPTARG ;;
+    v ) VERBOSE=1           ;;
+    h ) usage               ;;
+  esac
+done
+
+# ensure we got a warning and a crit
+if [ -z "$WARN_THRESH"  ] || [ -z "$CRIT_THRESH" ];then
+  echo "You must supply both -w int and -c int"
+  exit 3
+fi
+
+# check that crit is higher than warn or complain
+if [ "$WARN_THRESH" -gt "$CRIT_THRESH" ];then
+  echo "Warning level must be lower than crit level."
+  exit 3
+fi
+
+#################################################################
+# update the package list
+#################################
+
+sudo apt-get update > /dev/null
+
+if [ "$?" -ne 0 ];then
+  echo "apt-get update failed."
+  exit 3
+fi
+
+#################################################################
+# get the packages that need upgrading
+#################################
+
+# grab the package names in a single line
+PACKAGES=$(sudo apt-get upgrade -s | grep ^Inst | cut -f2 -d ' ' | tr '\n' ' ')
+
+# does this capture the right return or is it picking up the tr ? TODO
+if [ "$?" -ne 0 ];then
+  echo "apt-get upgrade -s failed."
+  exit 3
+fi
+
+# get the number of packages that need updating
+NUM_PKGS=$(echo "$PACKAGES" | grep -o ' ' | wc -l)
+
+#################################################################
+# print the output and give a return code for nagios
+#################################
+
+if [ "$NUM_PKGS" -ge "$CRIT_THRESH" ];then
+  printf "CRIT: - $NUM_PKGS packages need updating"
+  if [ "$VERBOSE" -ne 0 ];then
+    printf " - $PACKAGES"
+  fi
+  printf "\n"
+  exit 2
+elif [ "$NUM_PKGS" -ge "$WARN_THRESH" ];then
+  printf "WARN: - $NUM_PKGS packages need updating"
+  if [ "$VERBOSE" -ne 0 ];then
+    printf " - $PACKAGES"
+  fi
+  printf "\n"
+  exit 1
+else
+  echo "OK: No packages need updating"
+  exit 0     # no problems - nagios goes green
+fi

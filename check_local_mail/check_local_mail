@@ -1,0 +1,40 @@
+#!/bin/sh
+# check mailspool for local mail. If we find any flag it as a critical
+# note: the nagios user (which runs this script) should not be able to
+#       read mail. sudo is your friend
+
+# location mail builds up in and needs checking
+mailspool=/var/mail
+
+# sanity checks
+###############################################
+if [ ! -d "$mailspool" ];then
+  echo "Mailspool not present at $mailspool"
+  exit 3
+fi
+
+cd $mailspool 2>/dev/null
+if [ "$?" -ne 0 ];then
+  echo "Can't access mailspool '$mailspool'"
+  exit 3
+fi
+###############################################
+
+
+# check file lengths to see if any contain mail
+for mailfile in *
+do
+  if [ -s "$mailfile" ];then
+    bigfiles="$bigfiles : $mailfile"
+  fi
+done
+
+
+# print the required naigos exits based on results.
+if [ -z "$bigfiles" ];then
+  echo "OK - No mail found."
+  exit 0
+else
+  echo "Critical: Mail found in $bigfiles"
+  exit 2
+fi

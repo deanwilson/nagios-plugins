@@ -1,0 +1,71 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+
+# The check_disk_checker.pl script was written to help find mount points
+# that you're not monitoring. It scans through your local Nagios NRPE
+# config files, looks at your current mount points, and complains about any
+# mounted partitions that are not being checked - according to the local
+# NRPE config files.
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "@_"; exit 3; };
+
+my $mount = '/bin/mount';
+my $nagios_config_path = '/etc/nagios';
+my (%mounted_disks, %checked_disks); # store the read details.
+
+# our convention is anything ending with cfg or conf. Avoids backups
+my @nagios_configs = grep(/(cfg|conf)$/, <$nagios_config_path/nrpe*>);
+
+########################################################
+# get the device and mount point of the mounted disks
+########################################################
+
+open( my $mount_fh, "$mount |")
+  || die "Failed to open $mount: $!";
+
+while ( <$mount_fh> ) {
+  next unless m!^/dev/!;
+  my ($device, $mount_point) = (split(/\s+/, $_))[0,2];
+  $mounted_disks{$mount_point} = $device;
+}
+
+close $mount_fh;
+
+########################################################
+# grab the disks mentioned in the nagios nrpe configs
+########################################################
+
+foreach my $nagios_conf (@nagios_configs) {
+  open(my $config_fh, $nagios_conf)
+    || die "Failed to open '$nagios_conf': $!\n";
+
+  while(<$config_fh>) {
+    chomp;
+    next unless /check_disk\b/;
+    next if /^#/;
+    m/-p\s+(\S+)/;
+    $checked_disks{$1}++;
+  }
+
+  close $config_fh;
+}
+
+########################################################
+# Build output and show any that are not getting checked.
+########################################################
+
+my @not_checked = sort grep { ! exists $checked_disks{$_} } keys %mounted_disks;
+
+# assume the best
+my $message = "OK: All disks are checked.";
+my $exit_code = 0;
+
+my $pretty_quanti = @not_checked > 1 ? "are" : "is"; # make da grammer good ;)
+
+$exit_code = 2 if (@not_checked);
+$message  = "ERROR: @not_checked $pretty_quanti not checked!" if (@not_checked);
+
+print "$message\n";
+exit $exit_code;

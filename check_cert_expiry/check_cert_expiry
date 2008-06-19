@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# default values -  in days
+WARN_THRESH=30
+CRIT_THRESH=15
+
+# application config
+APPNAME=$(basename $0)
+SECDAYS=86400 # seconds in a day
+
+# certtool comes from gnutls-bin on debian
+binaries=$(cat<<all_required_binaries
+  date
+  certtool
+all_required_binaries)
+
+# sanity check. - check all binaries are present and usable
+for required_binary in $binaries; do
+  which $required_binary > /dev/null
+  if [ "$?" != '0' ];then
+    printf "$APPNAME: No usable '$required_binary' in '$PATH'\n"
+    exit 3
+  fi
+done
+
+#################################################################
+# usage information
+#################################################################
+
+usage () {
+
+cat<<EOU
+$APPNAME - Copyright (c) 2007 Dean Wilson - Licensed under the GPL
+
+$APPNAME checks a certificate file and returns CRIT, WARN or OK based upon
+how remains before it expires. It depends upon certtool and GNU date
+
+Usage: $APPNAME
+
+Required Options:
+ -f <filename>
+  The certfile to check
+
+Optional Options:
+ -w <number of days>
+    Exit with WARNING if the cert expires within the suppiled number of days
+    Defaults to 30 days
+ -c <number of days>
+    Exit with CRITICAL if the cert expires within the suppiled number of days
+    Defaults to 15 days
+ -h
+    This help and usage information.
+
+Notes:
+ The warning level must be lower than critical level.
+
+Examples:
+ $APPNAME -f /etc/certfile
+   Checks the cert file using the detault values of 30 and 15 days
+   respectively.
+
+ $APPNAME -w 30 -c 15 -f /etc/certfile
+   Checks the cert file using the supplied values
+
+EOU
+exit 3
+}
+
+#################################################################
+
+# get the options
+while getopts "w:c:f:" option
+do
+  case $option in
+    w ) WARN_THRESH=$OPTARG ;;
+    c ) CRIT_THRESH=$OPTARG ;;
+    f ) CERTFILE=$OPTARG    ;;
+    h ) usage               ;;
+    * ) usage
+  esac
+done
+
+# check the cert file
+if [[ -z "$CERTFILE" ]];then
+  printf "$APPNAME: please specify a cert file (-f filepath)\n"
+  exit 3
+fi
+
+if [ ! -e "$CERTFILE" ];then
+  printf "$APPNAME: failed to find $CERTFILE\n"
+  exit 3
+fi
+
+
+# make the thresh holds seconds not days
+WARNSECS=$(($SECDAYS * $WARN_THRESH))
+CRITSECS=$(($SECDAYS * $CRIT_THRESH))
+
+CERTEXPIRE=$(certtool -i --infile $CERTFILE | grep 'Not After:' | cut -f3- -d ' ')
+if [[ -z "$CERTEXPIRE" ]];then
+  printf "$APPNAME: certtool doesn't return a value...\n"
+  exit 3
+fi
+
+EPOCHEXPIRE=$(date --date="$CERTEXPIRE" +'%s')
+EPOCHNOW=$(date +'%s')
+
+WARNEPOCH=$(($EPOCHNOW + $WARNSECS))
+CRITEPOCH=$(($EPOCHNOW + $CRITSECS))
+
+if [ "$CRITEPOCH" -ge "$EPOCHEXPIRE" ];then
+  printf "CRITICAL: $CERTFILE expires at $CERTEXPIRE\n"
+  exit 2
+elif [ "$WARNEPOCH" -ge "$EPOCHEXPIRE" ];then
+  printf "WARNING: $CERTFILE expires at $CERTEXPIRE\n"
+  exit 1
+else
+  printf "OK: $CERTFILE expires at $CERTEXPIRE\n"
+  exit 0
+fi

@@ -1,0 +1,127 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Basename;
+
+# Author: Dean Wilson ; License: GPL
+# Project Home: http://www.unixdaemon.net/
+# For documentation look at the bottom of this file, or run with '-h'
+
+################################# SET OPTIONS ######################
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "@_"; exit 3; };
+
+my $app = basename($0);
+my $netstat_options = '-lnut --inet';  # the Linux netstat options we want
+my (%seen_tcp_ports, %seen_udp_ports);
+
+GetOptions(
+  "t|tcp|tcpports=s" => \( my $tcp_ports =  "22" ),
+  "u|udp|udpports=s" => \( my $udp_ports = "123" ),
+  "h|help"           => \&usage,
+);
+
+######################### Get the ports #############################
+
+my %expected_tcp_ports = map { $_ => $_ } split(",", $tcp_ports);
+my %expected_udp_ports = map { $_ => $_ } split(",", $udp_ports);
+
+open(my $stat_fh, "netstat $netstat_options |" )
+  || die "Failed to open netstat with $netstat_options\n$!\n";
+
+while (<$stat_fh>) {
+  chomp;
+  my @netstat_output = split;
+  $netstat_output[3] =~ m/\d{1,3}:(\d+)/;
+  next unless $1;
+  if ($netstat_output[0] eq "tcp") { $seen_tcp_ports{$1}++; next; }
+  if ($netstat_output[0] eq "udp") { $seen_udp_ports{$1}++; next; }
+}
+
+close $stat_fh;
+
+######################## Compare what we have and expect ############
+
+my (@missing_tcp, @missing_udp, @unexpected_tcp, @unexpected_udp);
+
+# look for things that should be open but are not
+for (sort keys %expected_tcp_ports) {
+  push(@missing_tcp, $_) unless exists $seen_tcp_ports{$_};
+}
+foreach (sort keys %expected_udp_ports) {
+  push(@missing_udp, $_) unless exists $seen_udp_ports{$_};
+}
+
+
+# look for things that are open but shouldn't be
+foreach (sort keys %seen_tcp_ports) {
+  push(@unexpected_tcp, $_) unless exists $expected_tcp_ports{$_};
+}
+foreach (sort keys %seen_udp_ports) {
+  push(@unexpected_udp, $_) unless exists $expected_udp_ports{$_};
+}
+
+################################# Build Output ######################
+
+my $message;
+my $exit_code = 0;
+
+# I like the two ifs more than an if block, it keeps the sections together
+$exit_code = 2           if (@missing_tcp || @missing_udp);
+$message   = "Expected:" if (@missing_tcp || @missing_udp);
+$message  .= " TCP - @missing_tcp"  if @missing_tcp;
+$message  .= " UDP - @missing_udp" if @missing_udp;
+
+$message .= ' ' if $message; # for pretty printing.
+
+$exit_code = 2             if (@unexpected_tcp || @unexpected_udp);
+$message  .= "Unexpected:" if (@unexpected_tcp || @unexpected_udp);
+$message  .= " TCP - @unexpected_tcp" if @unexpected_tcp;
+$message  .= " UDP - @unexpected_udp"  if @unexpected_udp;
+
+# if this is empty then all's well.
+$message = "TCP and UDP ports are as expected." unless $message;
+
+print "$message\n";
+exit $exit_code;
+
+#####################################################################
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2006 Dean Wilson. Licensed under the GPL
+
+This program checks the machine for open ports. It takes a list of TCP
+and UDP ports that you expect to be open and then reports if any of those
+are closed or if any others are open.
+
+Usage Examples:
+ $app -t 22,80,443 -u 123,161
+ $app -tcp 22,80,443
+ $app -udpports 123,161 -t 22,80,6000
+ $app -h ( shows this information )
+
+Options:
+  -t | -tcp | -tcpports
+    Accepts a comma seperated list of TCP ports to check.
+  -u | -udp | -udpports
+    Accepts a comma seperated list of UDP ports to check.
+  -h
+    This help and usage information
+
+Notes:
+  By default, if called with no arguments, it assumes TCP port 22 and
+  UDP port 123 should be open. (SSH and NTP respectively)
+
+  This check doesn't understand binding ports to different ips. If the
+  port is found on any interface it's considered open.
+
+  Debian SSH shows as being bound to IPv6 on a Debian fresh install. This
+  script only works on IPv4 ports.
+
+EOU
+  exit 3;
+}

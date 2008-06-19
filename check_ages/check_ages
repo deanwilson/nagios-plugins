@@ -1,0 +1,94 @@
+#!/bin/bash
+
+CRIT_THRESH=1     # default value -  in days
+BASEDIR=/var/log
+GLOB='*'
+
+APPNAME=$(basename $0)
+
+binaries=$(cat<<all_required_binaries
+  date
+  find
+all_required_binaries)
+
+# sanity check. - check all binaries are present and usable
+for required_binary in $binaries; do
+  which $required_binary > /dev/null
+  if [ "$?" != '0' ];then
+    printf "$APPNAME: No usable '$required_binary' in '$PATH'\n"
+    exit 3
+  fi
+done
+
+
+#################################################################
+# usage information
+#################################################################
+
+usage () {
+
+cat<<EOU
+$APPNAME - Copyright (c) 2007 Dean Wilson - Licensed under the GPL
+
+$APPNAME checks all the specified files for any older than the given
+parameter and CRITS with a list of all those found.
+
+Usage: $APPNAME
+
+Optional Options:
+ -c <number of days>
+    Exit with CRITICAL if any of the files haven't been modified within
+    the suppiled number of days Defaults to 15 days
+ -b <base directory>
+    The directory to check for files / directories
+ -g <globbing pattern>
+    Check the age of all files matching this glob
+ -h
+    This help and usage information.
+
+Examples:
+ $APPNAME -b /logs/
+   CRIT on all files/directories that haven't been modified in a day
+
+ $APPNAME -c 15 -b /home/user/state -g 'login*'
+   CRIT on all files/directories in /home/user/state that start with
+  'login' and  haven't been modified in 15 days
+
+EOU
+exit 3
+}
+
+#################################################################
+
+
+
+# get the options
+while getopts "c:b:g:h" option
+do
+  case $option in
+    c ) CRIT_THRESH=$OPTARG ;;
+    b ) BASEDIR=$OPTARG     ;;
+    g ) GLOB=$OPTARG        ;;
+    h ) usage               ;;
+    * ) usage
+  esac
+done
+
+if [ ! -d "$BASEDIR" ];then
+  printf "$APPNAME: $BASEDIR doesn't exist. Exiting...\n"
+  exit 3
+fi
+
+# do the actual glob expansion
+for file in `find $BASEDIR -maxdepth 1 -name "$GLOB" -mtime +$CRIT_THRESH | grep -v "^$BASEDIR$" | tr '\n' ' '`
+do
+  OLDFILES="$OLDFILES $file"
+done
+
+if [ ! -z "$OLDFILES" ];then
+  echo "CRIT: $OLDFILES are outside the threshold"
+  exit 3
+else
+  printf "OK: all within the defined threshold\n"
+  exit 0
+fi

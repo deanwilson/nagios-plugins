@@ -1,0 +1,122 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Basename;
+
+# Author: Dean Wilson ; License: GPL
+# Project Home: http://www.unixdaemon.net/nagios_plugins.html
+# Version 1
+# For documentation look at the bottom of this file, or run with '-h'
+
+# notes: if you supply a crit then you must supply a warn
+
+################################# SET OPTIONS ######################
+
+my $app = basename($0);
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "f|file|filename=s" => \( my $filename          ),
+  "w|warn|warning=s"  => \( my $warn      = 90000 ), # 25 hours
+  "c|crit|critical=s" => \( my $crit      = 90000 ),
+  "t|threshold"       => \( my $threshold = 0     ),
+  "h|help"            => \&usage,
+);
+
+if ( $warn < $crit) {
+  die "crit threshold must be higher than or equal to warn threshold\n";
+}
+
+my ( $epoch, $retcode, $retstring ) = get_values($filename);
+
+if ($threshold) {
+  check_timeout($warn, $crit, $epoch);
+}
+
+# all's well - pass through what we got and exit
+print "$app - $retstring\n";
+exit $retcode;
+
+#------------------------------------------#
+
+sub get_values {
+  # attempt to extract the three values from the specified file
+
+  my $filename = shift;
+
+  open( my $passive, $filename )
+    || die "failed to open $filename: $!\n";
+
+  my ( $epoch, $retcode, $retstring ) = <$passive> =~ /^(\d+)\s+(\d+)\s+(.+)$/;
+
+  close $passive;
+
+  # sanity checks - second field may be 0
+  die "format of $filename is incorrect\n" unless ($1 && defined $2 && $3);
+
+  if ($retcode < 0 || $retcode > 3) {
+    die "return code is out of bounds - received $retcode\n";
+  }
+
+  return ( $epoch, $retcode, $retstring );
+}
+
+#------------------------------------------#
+
+sub check_timeout {
+  # check the time from the file vs now + threshold
+  # could be inlined but I like it abstracted out
+
+  my $warn  = shift;
+  my $crit  = shift;
+  my $epoch = shift;
+
+  my $now   = time;
+
+  if ( ( $now - $crit) > $epoch ) {
+    die "the contained epoch timstamp is outside the threshold\n";
+  }
+}
+#------------------------------------------#
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2008 Dean Wilson. Licensed under the GPL
+
+This script wraps a file (created separately) and passes the contained
+values back though to the original caller. It also checks the enclosed
+timestamp and, based upon user defined thresholds, can exit with a
+warning or a critical if it is older than the options dictate.
+
+It can be used as a poor mans substitute for passive Nagios checks.
+
+This script was written to be used in conjunction with Nagios.
+
+Usage Examples:
+ $app   -f /path/to/file  # pass through - no threshold checking
+ $app   -f /tmp/written_file -t -w 180 -c 120
+ $app   -h    # shows this information
+
+Options:
+  -t | -threshold
+    Turn on threshold alerting.
+  -w | -warn
+    Warn if the enclosed value is outside the threshold.
+  -c | -crit
+    Critical if the enclosed value is outside the threshold.
+  -f | -file
+    File name to wrap and check
+  -h
+    This help and usage information
+
+Notes:
+  The file should contain a single line, the format is -
+   "epoch timestamp" "return code" "return string"
+
+EOU
+  exit 3;
+}
