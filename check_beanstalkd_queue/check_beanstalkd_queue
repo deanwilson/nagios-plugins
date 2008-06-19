@@ -1,0 +1,83 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Basename;
+use Queue::Beanstalk;
+
+# Author: Dean Wilson ; License: GPL
+# Project Home: http://www.unixdaemon.net/nagios_plugins.html
+# For documentation look at the bottom of this file, or run with '-h'
+
+################################# SET OPTIONS ######################
+
+my $app = basename($0);
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "w|warn|warning=s"  => \( my $warn   = 10 ),
+  "c|crit|critical=s" => \( my $crit   = 15 ),
+  "s|server|=s"       => \( my $server = '127.0.0.1' ),
+  "p|port|=s"         => \( my $port   = 11300 ),
+  "t|time|=s"         => \( my $time   = 5 ),
+  "h|help"            => \&usage,
+);
+
+if ( $warn > $crit) {
+  die "crit threshold must be higher than or equal to warn threshold\n";
+}
+
+my $jobs = Queue::Beanstalk->new(
+                               'servers'         => [ "$server:$port" ],
+                               'connect_timeout' => $time,
+
+);
+
+my $ready = $jobs->stats()->{'current-jobs-ready'};
+
+if ($ready >= $crit) {
+  print "CRIT: $ready jobs are currently ready (threshold $crit)\n";
+  exit 2;
+} elsif ($ready >= $warn) {
+  print "WARN: $ready jobs are currently ready (threshold $warn)\n";
+  exit 1;
+} else {
+  print "OK: $ready jobs are currently ready\n";
+  exit 0;
+}
+
+#------------------------------------------#
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2008 Dean Wilson. Licensed under the GPL
+
+This script checks the number of current jobs ready for processing and
+emits a Nagios compatible error or warning if the number exceeds the
+defined tthresholds.
+
+This script was written to be used in conjunction with Nagios.
+
+Usage Examples:
+ $app   -w 100 -c 150
+ $app   -s 10.10.10.10 -w 50 -c 75
+ $app   -h    # shows this information
+
+Options:
+  -w | -warn
+    Warn if the number of ready jobs is above or equal to the threshold.
+  -c | -crit
+    Critical if the number of ready jobs is above or equal to the threshold.
+  -s | -server
+    The server to check. Defaults to 127.0.0.1
+  -p | -port
+    The port beanstalkd is running on. Defaults to 11300.
+  -h
+    This help and usage information
+
+EOU
+  exit 3;
+}
