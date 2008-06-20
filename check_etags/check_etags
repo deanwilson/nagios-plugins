@@ -4,7 +4,6 @@ use warnings;
 use Getopt::Long;
 use File::Basename;
 use LWP::UserAgent;
-use Data::Dumper;
 
 my $app = basename($0);
 
@@ -18,7 +17,7 @@ GetOptions(
 );
 
 # sanitise and check url
-die "Please supply a URL" unless defined $url;
+die "Please supply a URL\n" unless defined $url;
 $url = "http://" . $url unless $url =~ m!^http://!;
 
 my $ua = LWP::UserAgent->new;
@@ -48,6 +47,11 @@ sub get_headers {
 
   # check it worked
   my $response = $ua->get($url);
+
+  unless ($response->is_success) {
+    print "CRIT: Failed to request $url\n";
+    exit 2;
+  }
 
   my $etag = $response->header('ETag');
   die "no ETag returned from '$url'\n" unless $etag;
