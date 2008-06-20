@@ -1,8 +1,8 @@
 #!/usr/bin/perl -w
 use strict;
 use warnings;
-use Getopt::Long;
 use File::Basename;
+use Getopt::Long;
 use LWP::UserAgent;
 
 my $app = basename($0);
@@ -11,17 +11,20 @@ my $app = basename($0);
 $SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
 
 GetOptions(
-  "r|runs=s" => \( my $runs   = 6 ),
-  "u|url=s"  => \( my $url ),
-  "h|help"            => \&usage,
+  "r|runs=s"    => \( my $runs = 6 ),
+  "t|timeout=s" => \( my $timeout = 20 ),
+  "u|url=s"     => \( my $url ),
+  "h|help"      => \&usage,
 );
 
+die "invalid timeout\n" unless $timeout =~ /^\d+$/;
+
 # sanitise and check url
-die "Please supply a URL\n" unless defined $url;
+die "please supply a URL\n" unless defined $url;
 $url = "http://" . $url unless $url =~ m!^http://!;
 
 my $ua = LWP::UserAgent->new;
-$ua->timeout(20);
+$ua->timeout($timeout);
 
 my $etag;
 for ( 1..$runs ) {
@@ -82,6 +85,8 @@ Usage Examples:
 Options:
   -r | --run
     Number of times to request the Etag for comparision. Defaults to 6
+  -t | --timeout
+    Number of seconds the URL requests should wait before timing out
   -u | --url
     The URL to check for consistency
   -h
