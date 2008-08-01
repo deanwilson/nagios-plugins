@@ -1,0 +1,66 @@
+#!/bin/perl
+use strict;
+use warnings;
+use LWP::UserAgent;
+use Getopt::Long;
+use File::Basename;
+
+my $app = basename($0);
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "p|proxy=s" => \( my $proxy                         ),
+  "t|timeout" => \( my $timeout = 10                  ),
+  "u|url=s"   => \( my $url = 'http://www.google.com' ),
+  "h|help"    => \&usage,
+);
+
+die "UNKNOWN: Please supply a proxy and a url" unless $proxy and $url;
+
+
+my $ua = LWP::UserAgent->new;
+$ua->timeout($timeout);
+$ua->proxy(['http', 'ftp'], $proxy);
+
+my $response = $ua->get($url);
+
+if ($response->is_success) {
+  print "OK: contacted [$url] via [$proxy]\n";
+  exit 0;
+}
+
+print "CRIT: [$url] via [$proxy] failed ", $response->status_line, "\n";
+exit 2;
+
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2008 Dean Wilson. Licensed under the GPL
+
+This script retrieves a URL via a specified proxy server and alerts
+(using the standard Nagios conventions) if the request fails.
+
+This script was written to be used in conjunction with Nagios.
+
+Usage Examples:
+ $app  --proxy http://10.10.10.10:3128 # retrieve google
+ $app  --proxy http://10.10.10.10:3128 --url http://www.example.com
+ $app   -h    # shows this information
+
+Options:
+  -t | --timeout
+    Time out value for the requested URL
+  -p | --proxy
+    The proxy server the request should be sent through.
+  -u | --url
+    The URL to retrieve through the proxy (default: http://www.google.com)
+  -h
+    This help and usage information
+
+EOU
+  exit 3;
+}
+
