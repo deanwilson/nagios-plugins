@@ -1,0 +1,98 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+use Data::Dumper;
+use Getopt::Long;
+use File::Basename;
+use WebService::Validator::HTML::W3C;
+
+my $app = basename($0);
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "w|warn|warnings" => \( my $warn ),
+  "h|help"          => \&usage,
+);
+
+my $url = shift;
+die "no URL supplied" unless $url;
+$url = "http://" . $url unless $url =~ m!^http://!;
+
+########################################################
+
+my %conf = (
+              detailed => 1,
+              output => 'soap12', # so we get warnings
+           );
+
+my $v = WebService::Validator::HTML::W3C->new(%conf);
+
+# problem with the remote site
+unless ( $v->validate( $url ) ) {
+  die "Failed to validate the website:",  $v->validator_error;
+}
+
+my ( $status, $message, $exitcode );
+
+if ( $warn and $v->warnings ) {
+  my $warnings = $v->warnings();
+  $status   = "WARNING: ";
+  $message  = "[$url] has " . scalar @$warnings . " warnings";
+  $exitcode = 1;
+}
+
+if ( $v->num_errors() ) {
+  $status   = "CRITICAL: ";
+  $exitcode = 2;
+
+  if ( $message ) {
+    $message .= " and " . $v->num_errors . " errors";
+  } else {
+    $message  = "[$url] has " . $v->num_errors . " errors";
+  }
+
+}
+
+if ( $v->is_valid ) {
+  $status   = "OK: ";
+  $message  = "[$url] is valid";
+  $exitcode = 0;
+}
+
+print "$status $message\n";
+exit  $exitcode;
+
+########################################################
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2008 Dean Wilson. Licensed under the GPL
+
+This script validates the given URL against the W3C validation service.
+It emits a Nagios compatible error or warning message and exit code if
+the URL contains errors, or with the specified flag, warnings.
+
+This script was written to be used in conjunction with Nagios.
+
+Usage Examples:
+ $app   http://example.com/
+ $app   -w http://example.com/ # flag when warnings
+ $app   -h    # shows this information
+
+Options:
+  -w | --warn
+    Exit with a Nagios compatible exit state (1) if the URL has warnings.
+  -h
+    This help and usage information
+
+Notes:
+As this script calls a remote site to do the actual checking it requires
+both an Internet connection and some restraint on checking intervals
+
+EOU
+  exit 3;
+}
+
