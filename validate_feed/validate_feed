@@ -1,0 +1,94 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Basename;
+use WebService::Validator::Feed::W3C;
+
+
+my $app = basename($0);
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "w|warn|warnings" => \( my $warn ),
+  "h|help"            => \&usage,
+);
+
+my $feed_url = shift;
+die "no feed supplied" unless $feed_url;
+$feed_url = "http://" . $feed_url unless $feed_url =~ m!^http://!;
+
+########################################################
+
+my $val = WebService::Validator::Feed::W3C->new;
+$val->validate( uri => $feed_url );
+#$val->validator_uri('http://example.org/validate');
+
+# die and display if we can't contact the validator
+unless ( $val->response->is_success ) {
+  die "request failed - ", $val->response->message;
+}
+
+my ( $status, $message, $exitcode );
+
+if ( $warn and $val->warnings ) {
+  my @warnings = $val->warnings;
+  $status = "WARNING: ";
+  $message  = " $feed_url contains " . scalar @warnings . " warnings";
+  $exitcode = 1;
+}
+
+# if we've for warnings (and -w) ad the errors to the output.
+unless ( $val->is_valid ) {
+  my @errors = $val->errors;
+
+  $status = "CRITICAL: ";
+  if ( $message ) {
+    $message .= " and " . scalar @errors . " errors";
+  } else {
+    $message  = " $feed_url contains " . scalar @errors . " errors";
+  }
+  $exitcode = 2;
+}
+
+if ( $exitcode) {
+  print "$status $message\n";
+  exit $exitcode;
+}
+
+print "OK: $feed_url is clean\n";
+exit 0;
+
+########################################################
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2008 Dean Wilson. Licensed under the GPL
+
+This script validates given feed against the W3C validation service and
+emits a Nagios compatible error or warning if the feed contains errors,
+or with the specified flag, warnings.
+
+This script was written to be used in conjunction with Nagios.
+
+Usage Examples:
+ $app   http://example.com/feed
+ $app   -w http://example.com/feed # flag when warnings
+ $app   -h    # shows this information
+
+Options:
+  -w | --warn
+    Exit with a Nagios compatible exit state (1) if the feed has warnings.
+  -h
+    This help and usage information
+
+Notes:
+As this script calls a remote site to do the actual checking it both
+requires an Internet connection and some restraint on checking intervals
+
+EOU
+  exit 3;
+}
