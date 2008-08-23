@@ -67,9 +67,9 @@ sub usage {
 
 $app - Copyright (c) 2008 Dean Wilson. Licensed under the GPL
 
-This script validates given feed against the W3C validation service and
-emits a Nagios compatible error or warning if the feed contains errors,
-or with the specified flag, warnings.
+This script validates the given feed against the W3C validation service.
+It emits a Nagios compatible error or warning message and exit code if
+the feed contains errors, or with the specified flag, warnings.
 
 This script was written to be used in conjunction with Nagios.
 
@@ -85,8 +85,8 @@ Options:
     This help and usage information
 
 Notes:
-As this script calls a remote site to do the actual checking it both
-requires an Internet connection and some restraint on checking intervals
+As this script calls a remote site to do the actual checking it requires
+both an Internet connection and some restraint on checking intervals
 
 EOU
   exit 3;
