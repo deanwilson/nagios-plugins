@@ -5,7 +5,6 @@ use Getopt::Long;
 use File::Basename;
 use WebService::Validator::Feed::W3C;
 
-
 my $app = basename($0);
 
 # deal with unexpected problems.
@@ -13,7 +12,7 @@ $SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
 
 GetOptions(
   "w|warn|warnings" => \( my $warn ),
-  "h|help"            => \&usage,
+  "h|help"          => \&usage,
 );
 
 my $feed_url = shift;
@@ -24,7 +23,6 @@ $feed_url = "http://" . $feed_url unless $feed_url =~ m!^http://!;
 
 my $val = WebService::Validator::Feed::W3C->new;
 $val->validate( uri => $feed_url );
-#$val->validator_uri('http://example.org/validate');
 
 # die and display if we can't contact the validator
 unless ( $val->response->is_success ) {
@@ -33,6 +31,7 @@ unless ( $val->response->is_success ) {
 
 my ( $status, $message, $exitcode );
 
+# if we got -w check for warnings
 if ( $warn and $val->warnings ) {
   my @warnings = $val->warnings;
   $status = "WARNING: ";
@@ -40,7 +39,7 @@ if ( $warn and $val->warnings ) {
   $exitcode = 1;
 }
 
-# if we've for warnings (and -w) ad the errors to the output.
+# if we've got warnings (and -w) add the errors to the output.
 unless ( $val->is_valid ) {
   my @errors = $val->errors;
 
