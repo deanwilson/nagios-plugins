@@ -20,6 +20,7 @@ for required_binary in $binaries; do
   fi
 done
 
+
 #################################################################
 # usage information
 #################################################################
@@ -40,6 +41,8 @@ Optional Options:
     the suppiled number of days Defaults to 15 days
  -b <base directory>
     The directory to check for files / directories
+ -e <exclude_list>
+    A list of files to exclude from the output
  -g <globbing pattern>
     Check the age of all files matching this glob
  -h
@@ -62,11 +65,12 @@ exit 3
 
 
 # get the options
-while getopts "c:b:g:h" option
+while getopts "b:c:e:g:h" option
 do
   case $option in
     c ) CRIT_THRESH=$OPTARG ;;
     b ) BASEDIR=$OPTARG     ;;
+    e ) EXCLUDE=$OPTARG     ;;
     g ) GLOB=$OPTARG        ;;
     h ) usage               ;;
     * ) usage
@@ -78,15 +82,29 @@ if [ ! -d "$BASEDIR" ];then
   exit 3
 fi
 
+if [ -n "$EXCLUDE" ] && [ ! -f "$EXCLUDE" ];then
+  printf "$APPNAME: $EXCLUDE doesn't exist. Exiting...\n"
+  exit 3
+fi
+
+
 # do the actual glob expansion
 for file in `find $BASEDIR -maxdepth 1 -name "$GLOB" -mtime +$CRIT_THRESH | grep -v "^$BASEDIR$" | tr '\n' ' '`
 do
-  OLDFILES="$OLDFILES $file"
+  matches=0
+
+  if [ -f "$EXCLUDE" ];then
+    matches=$(grep -c "$file" "$EXCLUDE")
+  fi
+
+  if [ "$matches" -eq 0 ];then
+    OLDFILES="$OLDFILES $file"
+  fi
 done
 
 if [ ! -z "$OLDFILES" ];then
   echo "CRIT: $OLDFILES are outside the threshold"
-  exit 3
+  exit 2
 else
   printf "OK: all within the defined threshold\n"
   exit 0
