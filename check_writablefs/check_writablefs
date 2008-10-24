@@ -1,0 +1,96 @@
+#!/bin/bash
+
+APPNAME=$(basename $0)
+
+# these two can be overridden by command line options
+CANARY=${APPNAME}-$$
+BASEDIR=/tmp
+
+#################################################################
+# usage information
+#################################################################
+
+usage () {
+
+cat<<EOU
+$APPNAME - Copyright (c) 2008 Dean Wilson - Licensed under the GPL
+
+$APPNAME checks that a file containing a predefined string can be
+written to the given location, read back and then deleted. If any
+of these steps fail then a CRIT is raised
+
+Usage: $APPNAME
+
+Optional Options:
+ -s [string]
+    The string to write and check for.
+ -d <base directory>
+    The base directory the file should be written to. Defaults to /tmp/
+ -h
+    This help and usage information.
+
+Examples:
+ $APPNAME -d /logs/ -s logcheck
+   Raise a CRIT if a file containing 'logcheck' can't be written,
+   read and deleted from '/logs/'
+
+EOU
+exit 3
+}
+
+#################################################################
+
+binaries=$(cat<<all_required_binaries
+  mktemp
+all_required_binaries)
+
+# sanity check. - check all binaries are present and usable
+for required_binary in $binaries; do
+  which $required_binary > /dev/null
+  if [ "$?" != '0' ];then
+    printf "$APPNAME: No usable '$required_binary' in '$PATH'\n"
+    exit 3
+  fi
+done
+
+
+
+# get the options
+while getopts "d:s:h" option
+do
+  case $option in
+    d ) BASEDIR=$OPTARG ;;
+    s ) CANARY=$OPTARG  ;;
+    h ) usage           ;;
+    * ) usage
+  esac
+done
+
+if [ ! -d "$BASEDIR" ];then
+  printf "$APPNAME: $BASEDIR doesn't exist. Exiting...\n"
+  exit 3
+fi
+
+
+######################### Write the file out
+TMPFILE=$(mktemp -q $BASEDIR/$APPNAME.XXXXXX)
+echo $CANARY > $TMPFILE
+
+if [ ! -f "$TMPFILE" ];then
+  echo "CRIT: failed to write [$TMPFILE] to [$BASEDIR]"
+  exit 2
+fi
+
+if ! grep -q "$CANARY" $TMPFILE ;then
+  rm $TMPFILE
+  echo "CRIT: failed to find canary value [$CANARY] in [$TMPFILE]"
+  exit 2
+fi
+
+if ! rm $TMPFILE 2>/dev/null ;then
+  echo "CRIT: failed to unlink [$TMPFILE]"
+  exit 2
+fi
+
+printf "OK: all within the defined threshold\n"
+exit 0
