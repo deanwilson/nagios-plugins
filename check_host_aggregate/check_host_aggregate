@@ -1,0 +1,122 @@
+#!/usr/bin/perl -w
+use strict;
+use warnings;
+use Data::Dumper;
+use Getopt::Long;
+use File::Basename;
+
+my $app = basename($0);
+
+#####################################################################
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2008 Dean Wilson. Licensed under the GPL
+
+This program accepts a list of hosts, a command and a percentage. It
+runs the check once for each host, and if more then the given percentage
+of hosts fail the check, triggers a Nagios compatible CRITCAL.
+
+Usage Examples:
+ $app -c '/usr/lib/nagios/plugins/check_something'  -p 25 web01 web02 db01
+
+ $app -c '/usr/lib/nagios/plugins/check_ssh %host%' -p 25 web01 web02 db01
+
+ $app -h ( shows this information )
+
+Options:
+ -c | --check | --command
+    The check command to run for each host. Should be quoted to protect
+    it from shell interpolation.
+ -d | --debug
+    This flag turns on debug mode. This allows you to view the ouput
+    of the command run for each host.
+ -p | --per | --percentage
+    Percentage of hosts that must receive OKs otherwise a CRITICAL is
+    raised. Defaults to 0 so any failiures flag as CRITICAL
+ -h This help and usage information
+
+Notes:
+
+The check command to run may require some thinking about. In many cases
+it's possible to just call the command but when the check to run
+requires some knowledge of the host it's running against you should use
+'%host%' host in the command string. $app will then substitue this place
+holder with the host it's currently iterating over.
+
+EOU
+  exit 3;
+}
+
+#####################################################################
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "@_"; exit 3; };
+
+GetOptions(
+  "c|check|command=s"  => \( my $command        ),
+  "d|debug"          => \( my $debug = 0      ),
+  "p|per|percentage=s" => \( my $percentage = 0 ),
+  "h|help"             => \&usage,
+);
+
+my @hosts = @ARGV;
+
+die "Please supply at least one host\n" unless @hosts;
+
+my %status;
+for my $host (@hosts) {
+  $status{$host} = run_command( $command, $host );
+}
+
+my %breakdown = do_math(\%status);
+
+if ( $breakdown{'percentage'} > $percentage ) {
+  print "CRITICAL: $breakdown{'percentage'}% failed\n";
+  exit 2;
+} else {
+  print "OK: $breakdown{'percentage'}% failed\n";
+  exit 0;
+}
+
+
+#-------------------------------------#
+
+sub run_command {
+  my ( $command, $host ) = @_;
+
+  $command =~ s/\%host%/$host/g;
+  $command .= ' 2>&1 > /dev/null' unless $debug;
+
+  print "$command -- $host\n" if $debug;
+
+  system( $command ) == 0
+    or return 3;
+
+  my $retcode = $?; # perldoc -f system
+
+  return $retcode;
+}
+
+#-------------------------------------#
+
+sub do_math {
+  my $status = shift;
+  my %breakdown = ( ok => 0, fail => 0 );
+
+  for my $host ( keys %$status ) {
+    if ( $status{$host} == 0 ) {
+      $breakdown{'ok'}++;
+    } else {
+      $breakdown{'fail'}++;
+    }
+  }
+
+  $breakdown{'percentage'} = sprintf( "%02d",
+    ( $breakdown{'fail'} / ( $breakdown{'fail'} + $breakdown{'ok'} ) ) * 100);
+
+  return %breakdown;
+}
+
+#-------------------------------------#
