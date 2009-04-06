@@ -1,0 +1,95 @@
+#!/bin/bash
+set -o pipefail
+
+APPNAME=$(basename $0)
+
+#################################################################
+# usage information
+#################################################################
+
+usage () {
+
+cat<<EOU
+$APPNAME - Copyright (c) 2009 Dean Wilson - Licensed under the GPL
+
+$APPNAME checks how many files a given directory, and all its subdirectories
+contain. 
+
+Usage: $APPNAME
+
+Optional Options:
+ -f [find command line options
+    Change the behaviour of the find command
+ -c <number>
+    If files exceed this number returns a CRIT. Defaults to 100
+ -d <base directory>
+    The base directory to run the find under
+ -w <number>
+    If files exceed this number returns a WARN. Defaults to 50
+ -h
+    This help and usage information.
+
+Examples:
+ $APPNAME -d /tmp/upload -c 2000
+   Raise a CRIT if more than 2000 files are in this directory or
+   the total of all the directories below it.
+
+ $APPNAME -d /tmp/movies -c 2000 -f ' -name "*.mov" '
+
+Notes:
+  As this check lets you pass in artbitary options to the find command
+  (which may include -exec or even a simple ; rm -rf) you should ensure
+  it's only run in a secure manor.
+
+EOU
+exit 3
+}
+
+CRIT=100
+WARN=50
+
+# get the options
+while getopts "c:d:f:w:h" option
+do
+  case $option in
+    f ) FINDOPTS=$OPTARG ;;
+    d ) BASEDIR=$OPTARG  ;;
+    c ) CRIT=$OPTARG     ;;
+    w ) WARN=$OPTARG     ;;
+    h ) usage            ;;
+    * ) usage
+  esac
+done
+
+############################ Sanity Check
+
+if [ -z "$BASEDIR" ];then
+  echo "$APPNAME: -d <directory> must be specfied"
+  exit 3
+fi
+
+if [ ! -d "$BASEDIR" ];then
+  echo "$APPNAME: $BASEDIR doesn't exist. Exiting..."
+  exit 3
+fi
+
+TOTALFILES=$( find $BASEDIR -type f $FINDOPTS 2>/dev/null | wc -l )
+FINDSTATUS=${PIPESTATUS[@]}
+
+if [ "$FINDSTATUS" -ne 0 ];then
+  echo "$APPNAME: 'find $BASEDIR -type f $FINDOPTS' failed. Exiting..."  
+  exit 3
+fi
+
+if [ "$TOTALFILES" -ge "$CRIT" ];then
+  echo "CRITICAL $BASEDIR contains $TOTALFILES files - threshold is $CRIT"
+  exit 2
+fi
+
+if [ "$TOTALFILES" -ge "$WARN" ];then
+  echo "WARNING $BASEDIR contains $TOTALFILES files - threshold is $WARN"
+  exit 2
+fi
+
+printf "OK: $BASEDIR contains $TOTALFILES \n"
+exit 0
