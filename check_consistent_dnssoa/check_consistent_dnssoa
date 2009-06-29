@@ -1,0 +1,103 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Basename;
+use Getopt::Long;
+use Net::DNS;
+
+my $app = basename($0);
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2009 Dean Wilson. Licensed under the GPL
+
+Usage: $app <domain> [-v]
+
+This script retrieves all the NS records for a given domain, fetches
+their respective SOA records, and then compares the Serial numbers.
+If any of them are inconsistent then the plugin exits with a CRIT
+(return code 2).
+
+I wrote this plugin to detect out of sync DNS servers.
+
+This script was written to be used in conjunction with Nagios.
+
+Usage Examples:
+ $app  unixdaemon.net
+ $app  unixdaemon.net -v
+ $app  -h    # shows this information
+
+Options:
+  -v
+    Turns verbose mode on and shows more details.
+  -h
+    This help and usage information
+
+EOU
+  exit 3;
+}
+
+#------------------------------------------------#
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "v|verbose" => \( my $verbose = 0 ),
+  "h|help"    => \&usage,
+);
+
+my $domain  = shift;
+my @servers = @ARGV;
+my @serials;
+
+my $res     = Net::DNS::Resolver->new;
+my $nsquery = $res->query( $domain, "NS");
+
+if ( $nsquery ) {
+  foreach my $rr ( grep { $_->type eq 'NS' } $nsquery->answer ) {
+    my $serial = get_soa_serial( $rr->nsdname, $domain);
+    push(@serials, $serial);
+  }
+} else {
+  die "Query for [$domain] nameservers failed: ",
+       $res->errorstring, "\n";
+}
+
+# collapse the serials down to unique occurances
+my %seen;
+my @uniq = grep { ! $seen{$_} ++ } @serials;
+
+if ( scalar @uniq > 1 ) {
+  print "CRIT: The servers disagree about the serial number\n";
+  exit 2;
+} else {
+  print "OK: All servers return the same Serial number: $serials[0]\n";
+  exit 0;
+}
+
+#------------------------------------------------#
+
+sub get_soa_serial {
+  my ( $nameserver, $domain ) = @_;
+  my $serial;
+
+  my $resolver = Net::DNS::Resolver->new;
+  $resolver->nameservers( $nameserver );
+
+  print "Checking [$nameserver] for [$domain]\n" if $verbose;
+
+  my $soaquery = $resolver->query( $domain, "SOA");
+  if ( $soaquery ) {
+    foreach my $rr ( grep { $_->type eq 'SOA' } $soaquery->answer ) {
+      $serial = $rr->serial;
+      print " -- got serial [$serial]\n" if $verbose;
+    }
+  } else {
+    die "Query for [$domain] against [$nameserver] failed: ",
+         $resolver->errorstring, "\n";
+  }
+
+  return $serial;
+}
