@@ -1,0 +1,70 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Basename;
+use File::Find::Rule;
+use Getopt::Long;
+
+my $app = basename($0);
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2009 Dean Wilson. Licensed under the GPL
+
+This script checks all the files under a given directory against a given size
+critera and CRITs if any are found to violate it.
+
+It was writting in perl to work around some oddities in the find commands size checks
+where -1M and -1024K were not returning the same result set.
+
+Usage: $app -d <directory>
+
+Usage Examples:
+ $app -d /backups -s '<5M' # CRITs if any backups under /backups are less than 5M
+ $app -d /var/log -s '>500M' -v # CRIT and show all the files over 500M under /var/log
+ $app -h # shows this information
+
+Options:
+  -d
+    The directory under which to look for files
+  -s
+    The file size to check files against - see man 3 Number::Compare
+    Defaults to finding files under 1M
+  -v
+    Turns verbose mode on and shows more details.
+  -h
+    This help and usage information
+
+EOU
+  exit 3;
+}
+
+GetOptions(
+  "d|directory=s" => \( my $directory    ),
+  "s|size=s"      => \( my $size = '<1M' ),
+  "v|verbose"     => \( my $verbose = 0  ),
+  "h|help"        => \&usage,
+);
+
+die "Please specify a directory\n" unless $directory;
+
+my @files = File::Find::Rule->file()
+  ->size( $size )
+  ->in( $directory );
+
+if ( scalar @files ) {
+
+  if ( $verbose ) {
+    print "CRIT: \n";
+    print "$_\n" for @files;
+  } else {
+    print "CRIT: ", scalar @files, " under $directory are [$size]\n";
+  }
+
+  exit 2;
+} else {
+  print "OK: no files under $directory are [$size]\n";
+  exit 0;
+}
