@@ -25,8 +25,8 @@ GetOptions(
 
 ######################### Get the ports #############################
 
-my %expected_tcp_ports = map { $_ => $_ } split(",", $tcp_ports);
-my %expected_udp_ports = map { $_ => $_ } split(",", $udp_ports);
+my %expected_tcp_ports = extract_ports( $tcp_ports );
+my %expected_udp_ports = extract_ports( $udp_ports );
 
 open(my $stat_fh, "netstat $netstat_options |" )
   || die "Failed to open netstat with $netstat_options\n$!\n";
@@ -124,4 +124,34 @@ Notes:
 
 EOU
   exit 3;
+}
+
+
+#-------------------------------------------------------------------------#
+
+sub extract_ports {
+  my $ports = shift;
+
+  my @ranges    = grep( /-/, split(",", $ports));
+  my @notranges = grep(!/-/, split(",", $ports));
+  my @expanded_ports;
+
+  for my $range ( @ranges ) {
+    if ( $range =~ m/(\d+)-(\d+)/ ) {
+      my ( $lower, $higher) = ( $1, $2 );
+
+      unless ( $lower < $higher ) {
+        die "Invalid port range - $lower should be less than $higher\n"
+      }
+      while( $lower <= $higher) {
+        push @expanded_ports, $lower;
+        $lower++;
+      }
+    } else {
+      die "Can't process a range of [$range]\n";
+    }
+  }
+
+  my %expected_ports = map { $_ => $_ } @notranges, @expanded_ports ;
+  return  %expected_ports;
 }
