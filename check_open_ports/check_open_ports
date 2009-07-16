@@ -49,19 +49,19 @@ close $stat_fh;
 my (@missing_tcp, @missing_udp, @unexpected_tcp, @unexpected_udp);
 
 # look for things that should be open but are not
-for (sort keys %expected_tcp_ports) {
+for (sort { $a <=> $b } keys %expected_tcp_ports) {
   push(@missing_tcp, $_) unless exists $seen_tcp_ports{$_};
 }
-foreach (sort keys %expected_udp_ports) {
+foreach (sort { $a <=> $b } keys %expected_udp_ports) {
   push(@missing_udp, $_) unless exists $seen_udp_ports{$_};
 }
 
 
 # look for things that are open but shouldn't be
-foreach (sort keys %seen_tcp_ports) {
+foreach (sort { $a <=> $b } keys %seen_tcp_ports) {
   push(@unexpected_tcp, $_) unless exists $expected_tcp_ports{$_};
 }
-foreach (sort keys %seen_udp_ports) {
+foreach (sort { $a <=> $b } keys %seen_udp_ports) {
   push(@unexpected_udp, $_) unless exists $expected_udp_ports{$_};
 }
 
