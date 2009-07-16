@@ -14,7 +14,7 @@ use File::Basename;
 $SIG{__DIE__} = sub { print "@_"; exit 3; };
 
 my $app = basename($0);
-my $netstat_options = '-lnut --inet';  # the Linux netstat options we want
+my $netstat_options = '-lnut';  # the Linux netstat options we want
 my (%seen_tcp_ports, %seen_udp_ports);
 
 GetOptions(
@@ -34,10 +34,12 @@ open(my $stat_fh, "netstat $netstat_options |" )
 while (<$stat_fh>) {
   chomp;
   my @netstat_output = split;
-  $netstat_output[3] =~ m/\d{1,3}:(\d+)/;
+  $netstat_output[3] =~ m/:(\d+)$/;
   next unless $1;
   if ($netstat_output[0] eq "tcp") { $seen_tcp_ports{$1}++; next; }
   if ($netstat_output[0] eq "udp") { $seen_udp_ports{$1}++; next; }
+  if ($netstat_output[0] eq "tcp6") { $seen_tcp_ports{$1}++; next; }
+  if ($netstat_output[0] eq "udp6") { $seen_udp_ports{$1}++; next; }
 }
 
 close $stat_fh;
