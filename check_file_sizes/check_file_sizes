@@ -29,6 +29,8 @@ Usage Examples:
 Options:
   -d
     The directory under which to look for files
+  -e
+    Files containing this string anywhere in their path won't show up as CRITs
   -s
     The file size to check files against - see man 3 Number::Compare
     Defaults to finding files under 1M
@@ -43,6 +45,7 @@ EOU
 
 GetOptions(
   "d|directory=s" => \( my $directory    ),
+  "e|exclude=s"   => \( my $exclude      ),
   "s|size=s"      => \( my $size = '<1M' ),
   "v|verbose"     => \( my $verbose = 0  ),
   "h|help"        => \&usage,
@@ -53,6 +56,10 @@ die "Please specify a directory\n" unless $directory;
 my @files = File::Find::Rule->file()
   ->size( $size )
   ->in( $directory );
+
+if ( $exclude ) {
+  @files = grep( !/$exclude/, @files);
+}
 
 if ( scalar @files ) {
 
