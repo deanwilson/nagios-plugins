@@ -1,0 +1,72 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use File::Basename;
+use File::Find::Rule;
+use Getopt::Long;
+
+my $app = basename($0);
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2009 Dean Wilson. Licensed under the GPL
+
+Usage: $app <directory> [-v]
+
+This script looks for symlinks under the given directory and exits with a
+CRIT if any are found and then cannot be resolved to a real file.
+
+This was written to help solve some dangling symlink issues.
+
+Usage Examples:
+ $app  /etc/apache2/sites-enabled
+ $app  /etc/apache2/sites-enabled -v
+ $app  -h    # shows this information
+
+Options:
+  -v
+    Turns verbose mode on and shows more details.
+  -h
+    This help and usage information
+
+EOU
+  exit 3;
+}
+
+# deal with unexpected problems.
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "v|verbose" => \( my $verbose = 0 ),
+  "h|help"    => \&usage,
+);
+
+my $basedir = shift;
+
+usage unless $basedir;
+die "[$basedir] not found\n" unless -d $basedir;
+
+my @all_links   = File::Find::Rule->symlink->in( $basedir );
+my @valid_links = File::Find::Rule->symlink->exists->in( $basedir );
+
+# get the broken links
+my %valid  = map { $_ => 1 } @valid_links;
+my @broken = grep( ! defined $valid{$_}, @all_links);
+
+my $num_broke = scalar @broken;
+if ( @broken > 0 ) { # we found dangling - report it.
+  printf("CRIT: Found %d (of %d) broken symlinks in [%s]\n",
+           $num_broke, scalar @all_links, $basedir
+        );
+
+  if ($verbose) {
+    print " -- @broken\n";
+  }
+  exit 2;
+} else {
+  printf("OK: Found no broken symlinks (0 of %d) in [$basedir]\n",
+           scalar @all_links, $basedir
+        );
+  exit 0;
+}
