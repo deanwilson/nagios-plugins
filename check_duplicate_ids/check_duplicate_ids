@@ -1,0 +1,32 @@
+#!/usr/bin/ruby
+
+filename = ARGV[0] || '/etc/passwd'
+
+users = Hash.new
+
+begin
+  File.open(filename).each_line do | account |
+    username, uid = account.split(":").values_at(0, 2)
+
+    users[uid] ||= []
+    users[uid] << username 
+  end
+rescue Exception => e
+  puts "CRIT: Failed to open #{filename} -- #{e}"
+  exit 3
+end
+
+message = String.new
+users.each_pair do |uid,user|
+  if users[uid].length > 1
+    message += "UID #{uid} is shared by #{user.join(', ')} "
+  end
+end
+
+if message.empty?
+  puts "OK: No duplicate IDs found"
+  exit 0
+else
+  puts message
+  exit 2
+end
