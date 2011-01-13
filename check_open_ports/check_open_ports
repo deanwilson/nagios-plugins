@@ -20,8 +20,16 @@ my (%seen_tcp_ports, %seen_udp_ports);
 GetOptions(
   "t|tcp|tcpports=s" => \( my $tcp_ports =  "22" ),
   "u|udp|udpports=s" => \( my $udp_ports = "123" ),
+  "f|files"          => \( my $files ),
+  "tf|tcpfile=s"     => \( my $tcp_file  = '/etc/openports/tcpports' ),
+  "uf|udpfile=s"     => \( my $udp_file  = '/etc/openports/udpports' ),
   "h|help"           => \&usage,
 );
+
+if ( $files ) {
+  $tcp_ports = load_ports( $tcp_file );
+  $udp_ports = load_ports( $udp_file );
+}
 
 ######################### Get the ports #############################
 
@@ -113,6 +121,12 @@ Options:
     Accepts a comma seperated list of UDP ports to check.
   -h
     This help and usage information
+  -f | -files
+    Load the TCP and UDP port lists from files, overrides the -t and -u options
+  -tf
+    File containing the TCP port list - defaults to /etc/openports/tcpports
+  -uf
+    File containing the UDP port list - defaults to /etc/openports/udppports
 
 Notes:
   By default, if called with no arguments, it assumes TCP port 22 and
@@ -120,6 +134,8 @@ Notes:
 
   This check doesn't understand binding ports to different ips. If the
   port is found on any interface it's considered open.
+
+  The port list files should be one port per line.
 
   Debian SSH shows as being bound to IPv6 on a Debian fresh install. This
   script only works on IPv4 ports.
@@ -156,4 +172,24 @@ sub extract_ports {
 
   my %expected_ports = map { $_ => $_ } @notranges, @expanded_ports ;
   return  %expected_ports;
+}
+
+#-------------------------------------------------------------------------#
+
+sub load_ports {
+  my $file = shift;
+  my $port_list;
+  my @ports;
+
+  open ( my $ports_file, '<', $file )
+    || die "Failed to open [$file]: $!\n";
+
+  while (<$ports_file>) {
+    chomp;
+    push(@ports, $_)
+  }
+
+  close ($ports_file);
+
+  return join(",", @ports);
 }
