@@ -1,0 +1,75 @@
+#!/usr/bin/ruby
+require 'puppet'
+require 'yaml'
+require 'facter'
+
+localconfig = ARGV[0] || "#{Puppet[:clientyamldir]}/catalog/#{ Facter.fqdn }.yaml"
+
+unless File.exist?(localconfig)
+  puts("Can't find #{ Facter.fqdn }.yaml")
+  exit 1
+end
+
+lc = File.read(localconfig)
+
+begin
+  pup = Marshal.load(lc)
+rescue TypeError
+  pup = YAML.load(lc)
+rescue Exception => e
+  raise
+end
+
+
+def user_key_files
+  keyfiles = []
+
+  File.open("/etc/passwd", 'r').each do | record |
+    homedir = record.split(":").values_at(5)
+    sshkeys = [ "#{homedir}/.ssh/authorized_keys", "#{homedir}/.ssh/authorized_keys2" ]
+
+    sshkeys.each do | keyfile |
+      keyfiles.push keyfile if File.exists? keyfile
+    end
+  end
+
+  return keyfiles
+end
+
+    
+# TODO horrid - make recursion work properly instead. Later
+@puppet_keys = []
+
+def extract_resource(resource)
+  if resource.class == Puppet::Resource::Catalog
+    resource.edges.each do |b|
+      extract_resource b
+    end
+  elsif resource.class == Puppet::Relationship and resource.target.class == Puppet::Resource and resource.target.title != nil and resource.target.file != nil
+    target = resource.target
+
+    if target.type == "File" and target.title.include? "/authorized_keys"
+      @puppet_keys.push target.title
+      return target.title
+    end
+  end
+end
+
+extract_resource(pup)
+
+unmanaged = user_key_files - @puppet_keys
+unmanaged.sort!
+
+unmanaged_details = []
+unmanaged.each do | key |
+  key_count = File.open( key, 'r').readlines.length
+  unmanaged_details << "#{key}:#{key_count}"
+end
+
+if unmanaged.empty?
+  puts "OK: all found key files are managed" # TODO add number managed. And as perf data.
+  exit 0
+else
+  puts "CRIT: #{unmanaged_details.length} unmanaged key files - #{unmanaged_details.join(", ")}"
+  exit 2
+end
