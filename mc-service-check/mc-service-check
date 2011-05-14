@@ -1,0 +1,57 @@
+#!/usr/bin/ruby
+require 'mcollective'
+include MCollective::RPC
+
+# TODO find a cli optparser I like.
+opts = { true => "fail-when-running", false => "fail-when-stopped"}
+appname = File.basename(__FILE__)
+usage   = "#{appname} <service> <#{ opts[true] } | #{ opts[false] }>"
+
+unless ARGV.length == 2
+  puts usage
+  exit 1
+end
+
+service, desired = ARGV
+
+unless desired == opts[true] || desired == opts[false]
+  puts usage
+  exit 1
+end
+
+mc = rpcclient("service")
+mc.progress = false
+
+failures   = {} # agent issue
+exceptions = [] # fails check critera
+count = 0
+
+mc.send("status", { :service => service }).each do | resp |
+  count += 1
+
+  if resp[:statuscode] == 0
+    status = resp[:data]["status"]
+
+    # TODO needs cleaning - duplication
+    exceptions << resp[:sender] if desired == opts[false] && status == "stopped"
+    exceptions << resp[:sender] if desired == opts[true]  && status == "running"
+  else
+    failures[ resp[:sender] ] = resp[:statusmsg]
+  end
+
+end
+
+mc.disconnect
+
+# nagios boiler plate
+if exceptions.empty? && failures.empty?
+  puts "OK: no violations on #{count} hosts"
+  exit 0
+elsif not failures.empty?
+  failed = failures.sort_by{ |a,b| a[1] <=> b[1] }.each_pair { |k,v| "#{k} => #{v}" }
+  puts "UNKNOWN: #{failed.keys.length}/#{count} - #{failed}"
+  exit 3
+else
+  puts "CRIT: #{service} #{exceptions.length}/#{count} #{desired} -- #{exceptions.sort.join(" : ") }"
+  exit 2
+end
