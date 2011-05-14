@@ -1,0 +1,16 @@
+#!/bin/sh
+
+filename=$1
+
+if [ -z "$filename" ];then
+  echo "UNKNOWN: No file specfied"
+  exit 3
+fi
+
+if [ -e "$filename" ];then
+  echo "CRITICAL: $filename exists"
+  exit 2
+else
+  echo "OK: $filename doesn't exist"
+  exit 0
+fi
