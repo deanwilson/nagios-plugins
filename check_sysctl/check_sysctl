@@ -1,0 +1,110 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Basename;
+
+my $app = basename($0);
+
+$SIG{__DIE__} = sub { print "$app - @_"; exit 3; };
+
+GetOptions(
+  "b|binary=s" => \( my $binary = '/sbin/sysctl' ),
+  "c|config=s" => \( my $config = '/etc/sysctl.conf' ),
+  "k|key|=s"   => \( my $sysctl_key   ),
+  "v|value|=s" => \( my $sysctl_value ), # $expected_value?
+  "h|help"     => \&usage,
+);
+
+# die on missing key / value
+
+my $file_value    = get_config( $config,  $sysctl_key );
+my $running_value = get_running( $binary, $sysctl_key );
+
+if ("$file_value" eq "$running_value" ) {
+  # host is consistent, check against our desired value.
+
+  if ("$file_value" ne "$sysctl_value") {
+    print "CRIT: '$config' has [$file_value] not [$sysctl_value]\n";
+    exit 2;
+  } elsif ("$running_value" ne "$sysctl_value") {
+    print "CRIT: running state has [$running_value] not [$sysctl_value]\n";
+    exit 2;
+  } else {
+    print "OK: $sysctl_key consistently has a value of $sysctl_value\n";
+    exit 0;
+  }
+
+} else {
+  print "CRIT: Inconsistent host: running=$running_value config=$file_value\n";
+  exit 2;
+}
+
+####################################################
+
+sub get_running {
+  my $bin    = shift;
+  my $wanted = shift;
+
+  my $cmd = "$bin -n $wanted";
+
+  open(my $sysctl, "-|", "$cmd")
+    || die "Failed to run [$cmd]: $!\n";
+
+  my $result = <$sysctl>;
+  chomp $result;
+
+  close $sysctl;
+
+  return $result;
+}
+
+
+#------------------------------#
+
+sub get_config {
+  my $config = shift;
+  my $wanted = shift;
+
+  open(my $sysctl, '<', $config)
+    || die "Failed to open $config: $!\n";
+
+  my @configs = grep(/^\s*$wanted\s*=\s*.+$/, <$sysctl>);
+
+  close $sysctl;
+
+  if (scalar @configs > 1) { # too many - config file issue.
+    die "UNKNOWN: Found ", scalar @configs, " matches for [$wanted]\n";
+  } elsif (! @configs) { # found none.
+    die "UNKNOWN: Found no matches for $wanted\n";
+  } else { # all's well.
+    $configs[0] =~ /=\s*(.+)$/;
+    return $1;
+  }
+}
+
+#------------------------------#
+
+sub usage {
+  print<<EOU;
+
+$app - Copyright (c) 2011 Dean Wilson. Licensed under the GPLv2
+
+Usage Examples:
+  $app  -k net.ipv4.ip_forward -v 1
+  $app  -k net.ipv4.conf.all.send_redirects -v 0
+  $app  -h    # shows this information
+
+Options:
+  -k | -key
+    The sysctl key to check
+  -v | -value
+    The expected value of the given sysctl key
+  -c | -config
+    Config file to look for values in (defaults to /etc/sysctl.conf)
+  -h
+    This help and usage information
+
+EOU
+  exit 3;
+}
