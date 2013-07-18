@@ -1,0 +1,4 @@
+Specify a default config file based on the script name
+Skip instances with a given tag/value (cli specific)
+Set warn/crit values in the config file
+Break out the per region expired numbers in the nagios output line

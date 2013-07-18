@@ -1,0 +1,9 @@
+[default]
+# use these credentials by default
+aws_access_key_id     = AAAAAAAA
+aws_secret_access_key = AAAAAAAAAAAAAAAA
+
+[us-east-1]
+# override the creds for this region
+aws_access_key_id     = BBBBBBBB
+aws_secret_access_key = BBBBBBBBBBBBBBBB

@@ -1,0 +1,212 @@
+#!/usr/bin/env python
+from collections import defaultdict
+from dateutil import parser as dateparser
+
+import argparse
+import boto.ec2
+import ConfigParser
+import os
+import sys
+import time
+
+class ExpiredInstances(object):
+
+    def __init__(self, args):
+        self.args = args
+        self.config = self.load_config()
+        self.regions = self.expand_regions(self.args.region)
+
+    def get_instances(self, region):
+        conn = self.get_connection(region)
+        instances = []
+
+        for reservation in conn.get_all_instances():
+            for instance in reservation.instances: # TODO why the reservation step? read lib docs
+                dt = dateparser.parse(instance.launch_time)
+
+                instance_name = instance.public_dns_name #
+
+                details = { 
+                    'id': instance.id,
+                    'launch_time': instance.launch_time,
+                    'launch_epoch': int(dt.strftime('%s')),
+                    'instance_name': instance_name,
+                    'state': instance.state,
+                    'instance_type': instance.instance_type,
+                }
+
+                instances.append(details)
+
+        return instances
+
+
+    def load_config(self):
+        config = ConfigParser.ConfigParser()
+        config.read(self.args.configfile)
+
+        return config
+
+
+    def credentials(self, region):
+        creds = defaultdict(str)
+
+        cred_names = { 'AWS_ACCESS_KEY': 'aws_access_key_id',
+                       'AWS_SECRET_KEY': 'aws_secret_access_key'}
+
+        for envname, confname in cred_names.iteritems():
+            if envname in os.environ.keys():
+                creds[cred_names[envname]] = os.environ.get(envname)
+            elif self.config.has_option('default', cred_names[envname]):
+                creds[cred_names[envname]] = self.config.get('default', cred_names[envname])
+            elif self.config.has_option(region, cred_names[envname]):
+                creds[cred_names[envname]] = self.config.get(region, cred_names[envname])
+            else:
+                self.unknown_error(3, 'No value for {} could be found').format(envname)
+
+        return(creds)
+
+
+    def get_connection(self, region):
+        access_key_id, secret_access_key = self.credentials(region).values()
+
+        connection = boto.ec2.connect_to_region(
+            region,
+            aws_access_key_id     = access_key_id,
+            aws_secret_access_key = secret_access_key
+        )
+
+        return connection
+
+
+    def expand_regions(self, region):
+        regions = []
+        all_regions = [ r.name for r in sorted(boto.ec2.regions()) ]
+
+        if region == 'all':
+            regions = all_regions
+        elif region not in all_regions:
+            region_msg = '{}: region must be one of {}'.format(
+                check_name, ', '.join(all_regions)
+            )
+            self.unknown_error(3, region_msg)
+        else:
+            regions.append(region)
+
+        return regions
+
+
+    def unknown_error(self, code, msg):
+            sys.stderr.write("{}\n".format(msg))
+            sys.exit(int(code))
+
+############################################
+############################################
+############################################
+
+
+if __name__ == '__main__':
+
+    check_name = os.path.basename(sys.argv[0])
+
+    ###################################
+    # argument parsing
+    ###################################
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('--region', action='store', default=os.getenv('REGION', 'all'),
+        help='The AWS region to check'
+    )
+    parser.add_argument('--verbose', action='store_true', default=False,
+        help='Show more information about the check as it runs'
+    )
+    parser.add_argument('--crit-ids', dest='critids', action='store_true',
+        help='Only display the ids of instances in critical state'               
+    )
+    parser.add_argument('--warn-ids', dest='warnids', action='store_true',
+        help='Only display the ids of instances in warning state'               
+    )
+    parser.add_argument('-f', '--config-file', dest='configfile', action='store',
+        help='The config file to use'
+    )
+    parser.add_argument('-w', '--warning', action='store', default=20,
+        help='warn about instances that have been running for more than N days',
+    )
+    parser.add_argument('-c', '--critical', action='store', default=30,
+        help='Critical about instances that have been running for more than N days',
+    )
+
+    args = parser.parse_args()
+
+    # multiply the values to make them days in seconds
+    args.warning = int(args.warning) * 86400
+    args.critical = int(args.critical) * 86400
+
+    if args.critical < args.warning:
+        sys.stderr.write("Critical value must be higher than warning value\n")
+        sys.exit(3)
+
+  ############################ end of arg parsing
+
+    ei = ExpiredInstances(args)
+
+    expired_count = defaultdict(int)
+    expired_ids = defaultdict(list)
+    now = int(time.time())
+
+
+    for region in ei.regions:
+        for instance in ei.get_instances(region):
+            if args.verbose:
+                print("{}({}) a {} started at {} in {}").format(instance['instance_name'], 
+                    instance['id'], instance['instance_type'], instance['launch_time'], region
+                )
+
+            if (instance['launch_epoch'] + args.critical) < now:
+                expired_count['critical'] += 1
+                expired_ids['critical'].append(instance['id'])
+                debug = "in critical state with {}".format(instance['launch_time'])
+
+            elif (instance['launch_epoch'] + args.warning) < now:
+                expired_count['warning'] += 1
+                expired_ids['warning'].append(instance['id'])
+                debug = "in warning state with {}".format(instance['launch_time'])
+
+            else:
+                expired_count['ok'] += 1
+                debug = "in ok state with {}".format(instance['launch_time'])
+
+
+            if args.verbose:
+                print("  -- processing {}").format(debug)
+
+
+    #####################################
+    # expired ids only - for piping to a reaper
+    #####################################
+    
+    if args.critids:
+        for id in expired_ids['critical']:
+            print(id)
+        sys.exit(0)
+
+    if args.warnids:
+        for id in expired_ids['warning']:
+            print(id)
+        sys.exit(0)
+
+    #####################################
+    # nagios friendly output
+    #####################################
+
+    regions = ','.join(ei.regions)
+
+    if expired_count['critical'] > 0:
+        print("{}: CRIT {} instances are past their expiry date in {}").format(check_name, expired_count['critical'], regions)
+        sys.exit(2)
+    elif expired_count['warning'] > 0:
+        print("{}: WARN {} instances are past their expiry date").format(check_name, expired_count['warning'], regions)
+        sys.exit(1)
+    else:
+        print("{}: OK {} instances are all within their expiry date").format(check_name, expired_count['ok'], regions)
+        sys.exit(0)
