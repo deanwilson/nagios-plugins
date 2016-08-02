@@ -9,7 +9,8 @@ APPNAME=$(basename $0)
 binaries=$(cat<<all_required_binaries
   date
   find
-all_required_binaries)
+all_required_binaries
+)
 
 # sanity check. - check all binaries are present and usable
 for required_binary in $binaries; do
