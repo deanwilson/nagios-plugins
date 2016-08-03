@@ -40,6 +40,9 @@ Optional Options:
  -c <number of days>
     Exit with CRITICAL if any of the files haven't been modified within
     the supplied number of days Defaults to 1 day
+ -m
+    Check the files against the number of provided minutes rather than
+    the default of days
  -b <base directory>
     The directory to check for files / directories
  -e <exclude_list>
@@ -66,15 +69,16 @@ exit 3
 
 
 # get the options
-while getopts "b:c:e:g:h" option
+while getopts "b:c:e:g:h:m" option
 do
   case $option in
     c ) CRIT_THRESH=$OPTARG ;;
     b ) BASEDIR=$OPTARG     ;;
     e ) EXCLUDE=$OPTARG     ;;
     g ) GLOB=$OPTARG        ;;
+    m ) MINUTES=yes         ;;
     h ) usage               ;;
-    * ) usage
+    * ) usage               ;;
   esac
 done
 
@@ -89,8 +93,14 @@ if [ -n "$EXCLUDE" ] && [ ! -f "$EXCLUDE" ];then
 fi
 
 
+if [ -n "$MINUTES" ];then
+  FIND_TIME_OPTION=' -mmin '
+else
+  FIND_TIME_OPTION=' -mtime '
+fi
+
 # do the actual glob expansion
-for file in `find $BASEDIR -maxdepth 1 -name "$GLOB" -mtime +$CRIT_THRESH | grep -v "^$BASEDIR$" | tr '\n' ' '`
+for file in `find $BASEDIR -maxdepth 1 -name "$GLOB" $FIND_TIME_OPTION +$CRIT_THRESH | grep -v "^$BASEDIR$" | tr '\n' ' '`
 do
   matches=0
 
