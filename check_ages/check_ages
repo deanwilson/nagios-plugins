@@ -39,7 +39,7 @@ Usage: $APPNAME
 Optional Options:
  -c <number of days>
     Exit with CRITICAL if any of the files haven't been modified within
-    the suppiled number of days Defaults to 1 day
+    the supplied number of days Defaults to 1 day
  -b <base directory>
     The directory to check for files / directories
  -e <exclude_list>
