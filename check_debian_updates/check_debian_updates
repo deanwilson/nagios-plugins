@@ -9,7 +9,8 @@ binaries=$(cat<<all_required_binaries
   basename
   apt-get
   sudo
-all_required_binaries)
+all_required_binaries
+)
 
 # app settings
 APPNAME=$(basename $0)
@@ -76,6 +77,7 @@ do
     c ) CRIT_THRESH=$OPTARG ;;
     v ) VERBOSE=1           ;;
     h ) usage               ;;
+    * ) usage               ;;
   esac
 done
 
