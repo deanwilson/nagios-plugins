@@ -77,6 +77,7 @@ do
     c ) CRIT_THRESH=$OPTARG ;;
     v ) VERBOSE=1           ;;
     h ) usage               ;;
+    * ) usage               ;;
   esac
 done
 
