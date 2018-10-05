@@ -9,7 +9,8 @@ binaries=$(cat<<all_required_binaries
   basename
   apt-get
   sudo
-all_required_binaries)
+all_required_binaries
+)
 
 # app settings
 APPNAME=$(basename $0)
